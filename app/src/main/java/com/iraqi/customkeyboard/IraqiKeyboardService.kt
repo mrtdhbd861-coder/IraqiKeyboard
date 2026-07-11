@@ -46,6 +46,9 @@ class IraqiKeyboardService : InputMethodService() {
         root.orientation = LinearLayout.VERTICAL
         root.setBackgroundColor(Color.parseColor("#1E1E1E"))
         root.setPadding(8, 8, 8, 8)
+        // نفرض اتجاه ثابت (يسار->يمين) على كل الكيبورد عشان نتحكم بترتيب
+        // كل حرف ورقم بنفسنا يدوياً، بدون ما يتدخل النظام ويقلب الترتيب تلقائياً
+        root.layoutDirection = View.LAYOUT_DIRECTION_LTR
 
         // صف الخيارات الأول: تفكيك الكلمة / تكرار الكلمة
         val toggleRow1 = LinearLayout(this)
@@ -124,10 +127,11 @@ class IraqiKeyboardService : InputMethodService() {
             0, dpToPx(52), 1.6f
         )
 
-        bottomRow.addView(switchLayoutBtn)
-        bottomRow.addView(spaceBtn)
-        bottomRow.addView(backspaceBtn)
+        // ترتيب الصف السفلي: انتر أقصى اليسار، وبعده حذف، مسافة، وتبديل اللوحة أقصى اليمين
         bottomRow.addView(enterBtn)
+        bottomRow.addView(backspaceBtn)
+        bottomRow.addView(spaceBtn)
+        bottomRow.addView(switchLayoutBtn)
         root.addView(bottomRow)
 
         updateToggleAppearance()
