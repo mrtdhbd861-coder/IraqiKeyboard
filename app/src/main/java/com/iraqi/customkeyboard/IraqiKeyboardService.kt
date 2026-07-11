@@ -2,6 +2,9 @@ package com.iraqi.customkeyboard
 
 import android.graphics.Color
 import android.inputmethodservice.InputMethodService
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -18,6 +21,10 @@ class IraqiKeyboardService : InputMethodService() {
 
     private val digitBuffer = StringBuilder()
     private val wordBuffer = StringBuilder()
+
+    private val autoHandler = Handler(Looper.getMainLooper())
+    private val autoDuplicateRunnable = Runnable { performNumberDuplicate() }
+    private val AUTO_DELAY_MS = 500L // نص ثانية بعد آخر رقم تكتبه
 
     private lateinit var keysContainer: LinearLayout
     private lateinit var splitToggleBtn: Button
@@ -49,6 +56,11 @@ class IraqiKeyboardService : InputMethodService() {
         // نفرض اتجاه ثابت (يسار->يمين) على كل الكيبورد عشان نتحكم بترتيب
         // كل حرف ورقم بنفسنا يدوياً، بدون ما يتدخل النظام ويقلب الترتيب تلقائياً
         root.layoutDirection = View.LAYOUT_DIRECTION_LTR
+
+        // تعطيل Force Dark (خاصية أندرويد اللي تسبب اختفاء ألوان النصوص ببعض الأجهزة مثل سامسونج)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            root.isForceDarkAllowed = false
+        }
 
         // صف الخيارات الأول: تفكيك الكلمة / تكرار الكلمة
         val toggleRow1 = LinearLayout(this)
@@ -106,6 +118,7 @@ class IraqiKeyboardService : InputMethodService() {
         )
 
         switchLayoutBtn = makeKey(if (isNumbersLayout) "أبج" else "123") {
+            autoHandler.removeCallbacks(autoDuplicateRunnable)
             isNumbersLayout = !isNumbersLayout
             digitBuffer.clear()
             wordBuffer.clear()
@@ -127,11 +140,11 @@ class IraqiKeyboardService : InputMethodService() {
             0, dpToPx(52), 1.6f
         )
 
-        // ترتيب الصف السفلي: انتر أقصى اليسار، وبعده حذف، مسافة، وتبديل اللوحة أقصى اليمين
-        bottomRow.addView(enterBtn)
-        bottomRow.addView(backspaceBtn)
-        bottomRow.addView(spaceBtn)
+        // ترتيب الصف السفلي: تبديل اللوحة يسار، مسافة، حذف، وانتر أقصى اليمين
         bottomRow.addView(switchLayoutBtn)
+        bottomRow.addView(spaceBtn)
+        bottomRow.addView(backspaceBtn)
+        bottomRow.addView(enterBtn)
         root.addView(bottomRow)
 
         updateToggleAppearance()
@@ -228,6 +241,11 @@ class IraqiKeyboardService : InputMethodService() {
         if (isNumbersLayout) {
             if (isDigit && isDuplicateMode) {
                 digitBuffer.append(key)
+                ic.commitText(key, 1)
+                // نلغي أي مؤقت سابق ونبدأ عد تنازلي جديد - إذا ما كتب رقم ثاني خلال نص ثانية، يدبلها لحاله
+                autoHandler.removeCallbacks(autoDuplicateRunnable)
+                autoHandler.postDelayed(autoDuplicateRunnable, AUTO_DELAY_MS)
+                return
             }
             ic.commitText(key, 1)
             return
@@ -246,14 +264,23 @@ class IraqiKeyboardService : InputMethodService() {
         ic.commitText(key, 1)
     }
 
+    // يشتغل تلقائياً بعد AUTO_DELAY_MS من آخر رقم يكتبه المستخدم بوضع التدبيل
+    private fun performNumberDuplicate() {
+        val ic = currentInputConnection ?: return
+        if (digitBuffer.isNotEmpty()) {
+            val num = digitBuffer.toString()
+            val repeated = (1 until duplicateCount).joinToString("") { " $num" }
+            ic.commitText("$repeated ", 1)
+            digitBuffer.clear()
+        }
+    }
+
     private fun onSpace() {
         val ic = currentInputConnection ?: return
 
         if (isNumbersLayout && isDuplicateMode && digitBuffer.isNotEmpty()) {
-            val num = digitBuffer.toString()
-            val repeated = (1..duplicateCount).joinToString(" ") { num }
-            ic.commitText(" $repeated ", 1)
-            digitBuffer.clear()
+            autoHandler.removeCallbacks(autoDuplicateRunnable)
+            performNumberDuplicate()
             return
         }
 
@@ -270,6 +297,7 @@ class IraqiKeyboardService : InputMethodService() {
     private fun onBackspace() {
         val ic = currentInputConnection ?: return
         if (isNumbersLayout) {
+            autoHandler.removeCallbacks(autoDuplicateRunnable)
             if (digitBuffer.isNotEmpty()) digitBuffer.deleteCharAt(digitBuffer.length - 1)
         } else {
             if (wordBuffer.isNotEmpty()) wordBuffer.deleteCharAt(wordBuffer.length - 1)
@@ -279,6 +307,7 @@ class IraqiKeyboardService : InputMethodService() {
 
     private fun onEnter() {
         val ic = currentInputConnection ?: return
+        autoHandler.removeCallbacks(autoDuplicateRunnable)
         digitBuffer.clear()
         wordBuffer.clear()
         ic.commitText("\n", 1)
