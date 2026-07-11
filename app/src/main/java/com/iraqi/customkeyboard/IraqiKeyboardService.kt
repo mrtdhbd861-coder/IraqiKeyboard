@@ -10,17 +10,23 @@ import android.widget.LinearLayout
 
 class IraqiKeyboardService : InputMethodService() {
 
-    private var isSplitMode = false      // تفكيك الكلمة
-    private var isDuplicateMode = false  // تدبيل
+    private var isSplitMode = false      // تفكيك الكلمة: ب ي ت
+    private var isWordDupMode = false    // تكرار الكلمة: بيت بيت
+    private var isDuplicateMode = false  // تدبيل الأرقام
+    private var duplicateCount = 2       // عدد مرات تكرار الرقم (٢-٥)
     private var isNumbersLayout = false
+
     private val digitBuffer = StringBuilder()
+    private val wordBuffer = StringBuilder()
 
     private lateinit var keysContainer: LinearLayout
     private lateinit var splitToggleBtn: Button
+    private lateinit var wordDupToggleBtn: Button
     private lateinit var dupToggleBtn: Button
+    private lateinit var dupCountBtn: Button
     private lateinit var switchLayoutBtn: Button
 
-    // لوحة الحروف - ٣ صفوف
+    // لوحة الحروف - ٣ صفوف (بترتيب الكيبورد العربي الصحيح، من اليمين لليسار)
     private val lettersRows = arrayOf(
         arrayOf("ض", "ص", "ث", "ق", "ف", "غ", "ع", "ه", "خ", "ح", "ج"),
         arrayOf("ش", "س", "ي", "ب", "ل", "ا", "ت", "ن", "م", "ك", "ط"),
@@ -41,25 +47,47 @@ class IraqiKeyboardService : InputMethodService() {
         root.setBackgroundColor(Color.parseColor("#1E1E1E"))
         root.setPadding(8, 8, 8, 8)
 
-        // صف الخيارات (تفكيك الكلمة / تدبيل)
-        val toggleRow = LinearLayout(this)
-        toggleRow.orientation = LinearLayout.HORIZONTAL
-        toggleRow.layoutParams = LinearLayout.LayoutParams(
+        // صف الخيارات الأول: تفكيك الكلمة / تكرار الكلمة
+        val toggleRow1 = LinearLayout(this)
+        toggleRow1.orientation = LinearLayout.HORIZONTAL
+        toggleRow1.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         )
 
         splitToggleBtn = makeToggleButton("تفكيك الكلمة") {
             isSplitMode = !isSplitMode
+            if (isSplitMode) isWordDupMode = false
             updateToggleAppearance()
         }
+        wordDupToggleBtn = makeToggleButton("تكرار الكلمة") {
+            isWordDupMode = !isWordDupMode
+            if (isWordDupMode) isSplitMode = false
+            wordBuffer.clear()
+            updateToggleAppearance()
+        }
+        toggleRow1.addView(splitToggleBtn)
+        toggleRow1.addView(wordDupToggleBtn)
+        root.addView(toggleRow1)
+
+        // صف الخيارات الثاني: تدبيل الأرقام + عدد التكرار
+        val toggleRow2 = LinearLayout(this)
+        toggleRow2.orientation = LinearLayout.HORIZONTAL
+        toggleRow2.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+
         dupToggleBtn = makeToggleButton("تدبيل") {
             isDuplicateMode = !isDuplicateMode
             digitBuffer.clear()
             updateToggleAppearance()
         }
-        toggleRow.addView(splitToggleBtn)
-        toggleRow.addView(dupToggleBtn)
-        root.addView(toggleRow)
+        dupCountBtn = makeToggleButton("×$duplicateCount") {
+            duplicateCount = if (duplicateCount >= 5) 2 else duplicateCount + 1
+            dupCountBtn.text = "×$duplicateCount"
+        }
+        toggleRow2.addView(dupToggleBtn)
+        toggleRow2.addView(dupCountBtn)
+        root.addView(toggleRow2)
 
         // منطقة المفاتيح (تتبدل بين حروف وأرقام)
         keysContainer = LinearLayout(this)
@@ -67,7 +95,7 @@ class IraqiKeyboardService : InputMethodService() {
         root.addView(keysContainer)
         buildKeysLayout()
 
-        // الصف السفلي: تبديل اللوحة / مسافة / حذف / انتر
+        // الصف السفلي: تبديل اللوحة / مسافة / حذف / انتر (انتر باليمين، أكبر حجم)
         val bottomRow = LinearLayout(this)
         bottomRow.orientation = LinearLayout.HORIZONTAL
         bottomRow.layoutParams = LinearLayout.LayoutParams(
@@ -77,6 +105,7 @@ class IraqiKeyboardService : InputMethodService() {
         switchLayoutBtn = makeKey(if (isNumbersLayout) "أبج" else "123") {
             isNumbersLayout = !isNumbersLayout
             digitBuffer.clear()
+            wordBuffer.clear()
             switchLayoutBtn.text = if (isNumbersLayout) "أبج" else "123"
             buildKeysLayout()
         }
@@ -87,7 +116,13 @@ class IraqiKeyboardService : InputMethodService() {
         )
 
         val backspaceBtn = makeKey("⌫") { onBackspace() }
+
         val enterBtn = makeKey("⏎") { onEnter() }
+        enterBtn.textSize = 24f
+        enterBtn.setTypeface(null, android.graphics.Typeface.BOLD)
+        enterBtn.layoutParams = LinearLayout.LayoutParams(
+            0, dpToPx(52), 1.6f
+        )
 
         bottomRow.addView(switchLayoutBtn)
         bottomRow.addView(spaceBtn)
@@ -103,6 +138,7 @@ class IraqiKeyboardService : InputMethodService() {
         val b = Button(this)
         b.text = label
         b.textSize = 13f
+        b.setTextColor(Color.WHITE)
         b.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         b.setOnClickListener { onClick(it) }
         return b
@@ -111,16 +147,18 @@ class IraqiKeyboardService : InputMethodService() {
     private fun makeKey(label: String, onClick: (View) -> Unit): Button {
         val b = Button(this)
         b.text = label
-        b.textSize = 16f
+        b.textSize = 18f
+        b.setTextColor(Color.WHITE)
+        b.setBackgroundColor(Color.parseColor("#3A3A3A"))
         b.setOnClickListener { onClick(it) }
         return b
     }
 
     private fun updateToggleAppearance() {
         splitToggleBtn.setBackgroundColor(if (isSplitMode) Color.parseColor("#4CAF50") else Color.parseColor("#333333"))
-        splitToggleBtn.setTextColor(Color.WHITE)
+        wordDupToggleBtn.setBackgroundColor(if (isWordDupMode) Color.parseColor("#4CAF50") else Color.parseColor("#333333"))
         dupToggleBtn.setBackgroundColor(if (isDuplicateMode) Color.parseColor("#4CAF50") else Color.parseColor("#333333"))
-        dupToggleBtn.setTextColor(Color.WHITE)
+        dupCountBtn.setBackgroundColor(Color.parseColor("#2979FF"))
     }
 
     private fun buildKeysLayout() {
@@ -146,7 +184,6 @@ class IraqiKeyboardService : InputMethodService() {
                 rowLayout.layoutParams = rowParams
                 keysContainer.addView(rowLayout)
             }
-            // ارتفاع ثابت مناسب لشكل numpad
             keysContainer.layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(220)
             )
@@ -161,9 +198,11 @@ class IraqiKeyboardService : InputMethodService() {
                 rowLayout.layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                for (key in row) {
+                // نعكس ترتيب الإضافة عشان أول حرف بالمصفوفة يطلع أقصى اليمين (ترتيب عربي صحيح)
+                for (key in row.reversed()) {
                     val keyBtn = makeKey(key) { onKeyPress(key) }
-                    val params = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    keyBtn.textSize = 20f
+                    val params = LinearLayout.LayoutParams(0, dpToPx(46), 1f)
                     params.setMargins(2, 2, 2, 2)
                     keyBtn.layoutParams = params
                     rowLayout.addView(keyBtn)
@@ -182,39 +221,54 @@ class IraqiKeyboardService : InputMethodService() {
         val ic = currentInputConnection ?: return
         val isDigit = key.length == 1 && key[0].isDigit()
 
-        if (isDigit && isDuplicateMode) {
-            digitBuffer.append(key)
+        if (isNumbersLayout) {
+            if (isDigit && isDuplicateMode) {
+                digitBuffer.append(key)
+            }
             ic.commitText(key, 1)
             return
         }
 
-        if (!isDigit && digitBuffer.isNotEmpty()) {
-            digitBuffer.clear()
+        // وضع الحروف
+        if (isSplitMode) {
+            // تفكيك الكلمة: كل حرف يترافق مع مسافة فوراً -> ب ي ت
+            ic.commitText("$key ", 1)
+            return
         }
 
-        if (!isNumbersLayout && isSplitMode) {
-            // تفكيك الكلمة: كل حرف يترافق مع مسافة فوراً
-            ic.commitText("$key ", 1)
-        } else {
-            ic.commitText(key, 1)
+        if (isWordDupMode) {
+            wordBuffer.append(key)
         }
+        ic.commitText(key, 1)
     }
 
     private fun onSpace() {
         val ic = currentInputConnection ?: return
-        if (isDuplicateMode && digitBuffer.isNotEmpty()) {
+
+        if (isNumbersLayout && isDuplicateMode && digitBuffer.isNotEmpty()) {
             val num = digitBuffer.toString()
-            ic.commitText(" $num ", 1)
+            val repeated = (1..duplicateCount).joinToString(" ") { num }
+            ic.commitText(" $repeated ", 1)
             digitBuffer.clear()
-        } else {
-            ic.commitText(" ", 1)
+            return
         }
+
+        if (!isNumbersLayout && isWordDupMode && wordBuffer.isNotEmpty()) {
+            val w = wordBuffer.toString()
+            ic.commitText(" $w ", 1)
+            wordBuffer.clear()
+            return
+        }
+
+        ic.commitText(" ", 1)
     }
 
     private fun onBackspace() {
         val ic = currentInputConnection ?: return
-        if (digitBuffer.isNotEmpty()) {
-            digitBuffer.deleteCharAt(digitBuffer.length - 1)
+        if (isNumbersLayout) {
+            if (digitBuffer.isNotEmpty()) digitBuffer.deleteCharAt(digitBuffer.length - 1)
+        } else {
+            if (wordBuffer.isNotEmpty()) wordBuffer.deleteCharAt(wordBuffer.length - 1)
         }
         ic.deleteSurroundingText(1, 0)
     }
@@ -222,6 +276,7 @@ class IraqiKeyboardService : InputMethodService() {
     private fun onEnter() {
         val ic = currentInputConnection ?: return
         digitBuffer.clear()
+        wordBuffer.clear()
         ic.commitText("\n", 1)
     }
 }
