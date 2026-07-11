@@ -24,7 +24,7 @@ class IraqiKeyboardService : InputMethodService() {
 
     private val autoHandler = Handler(Looper.getMainLooper())
     private val autoDuplicateRunnable = Runnable { performNumberDuplicate() }
-    private val AUTO_DELAY_MS = 500L // نص ثانية بعد آخر رقم تكتبه
+    private val AUTO_DELAY_MS = 150L // شبه فوري - يدبل بسرعة بعد آخر رقم
 
     private lateinit var keysContainer: LinearLayout
     private lateinit var splitToggleBtn: Button
